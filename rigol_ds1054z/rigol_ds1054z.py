@@ -7,7 +7,7 @@ from math import floor, log10
 import numpy as np
 import datetime
 import functools
-from typing import Literal, List, Optional
+from typing import Literal, List, Optional, Tuple
 
 class Timer:
     def __init__(self):
@@ -189,16 +189,24 @@ class rigol_ds1054z:
     # probe should either be 10.0 or 1.0, per the setting on the physical probe
     def setup_channel(self, channel=1, on=True, offset_divs=0.0, volts_per_div=1.0, probe=10.0):
         if (on):
+            #fmt: off
             self.inst.write(':CHAN' + str(channel) + ':DISP ' + 'ON')
             self.inst.write(':CHAN' + str(channel) + ':SCAL ' + str(volts_per_div))
             self.inst.write(':CHAN' + str(channel) + ':OFFS ' + str(offset_divs*volts_per_div))
             self.inst.write(':CHAN' + str(channel) + ':PROB ' + str(probe))
             print ("Turned on CH" + str(channel) + ", position is " + str(offset_divs) + " divisions from center, " + str(volts_per_div) + " volts/div, scope is " + str(probe) + "x")
+            #fmt: on
         else:
             self.inst.write(':CHAN' + str(channel) + ':DISP OFF')
             print ("Turned off channel " + str(channel))
     
     def val_and_unit_to_real_val(self, val_with_unit='1s'):
+        try:
+            # Allow unitless strings and plain floats
+            val = float(val_with_unit)
+            return val
+        except:
+            pass
         number = float(re.search(r"([0-9\.]+)",val_with_unit).group(0))
         unit = re.search(r"([a-z]+)",val_with_unit.lower()).group(0).lower()
         if (unit == 's' or unit == 'v'):
@@ -213,11 +221,11 @@ class rigol_ds1054z:
             real_val_no_units = number
         return real_val_no_units
 
-    # remember to always use lowercase time_per_div units, the regex look for lowercase
     def setup_timebase(self, time_per_div='1ms', delay='0ms') -> (float, float):
         time_per_div_real = self.val_and_unit_to_real_val(time_per_div)
         self.inst.write(':TIM:MAIN:SCAL ' + str(time_per_div_real))
-        print ("Timebase was set to " + time_per_div + " per division")
+        readback = self.get(':TIM:MAIN:SCAL?')
+        print (f"Timebase was set to {readback} s per division")
         delay_real = self.val_and_unit_to_real_val(delay)
         self.inst.write(':TIM:MAIN:OFFS ' + str(delay_real))
         scale = self.inst.query_ascii_values(':TIM:MAIN:SCAL?')[0]
@@ -245,6 +253,7 @@ class rigol_ds1054z:
         if (on == 0):
             self.inst.write(':DEC' + str(decode_channel) + ':CONF:LINE OFF')
         else:
+            #fmt: off
             self.inst.write(':DEC' + str(decode_channel) + ':MODE IIC')
             self.inst.write(':DEC' + str(decode_channel) + ':DISP ON')
             self.inst.write(':DEC' + str(decode_channel) + ':FORM ' + encoding)
@@ -254,7 +263,7 @@ class rigol_ds1054z:
             self.inst.write(':DEC' + str(decode_channel) + ':IIC:CLK CHAN' + str(scl_channel))
             self.inst.write(':DEC' + str(decode_channel) + ':IIC:DATA CHAN' + str(sda_channel))
             self.inst.write(':DEC' + str(decode_channel) + ':IIC:ADDR RW')
-
+            #fmt: on
     def sample_rate(self):
         return self.inst.query_ascii_values(":ACQ:SRAT?")[0]
 
@@ -361,13 +370,15 @@ class rigol_ds1054z:
         Returns:
             Tuple[np.polynomial.Polynomial, np.polynomial.Polynomial]: timepoly, voltpoly
         """
+        if not raw:
+            raise NotImplementedError("Only raw mode supported")
+
         scales = [self.get(f':WAV:{vname}?')
                   for vname in "XINCREMENT,XORIGIN,XREFERENCE,YINCREMENT,YORIGIN,YREFERENCE".split()]
         raise NotImplementedError("I don't yet have the conversion factors")
-        
-     def get_mem_depth(self):
-        if not raw:
-            raise NotImplementedError("Only raw mode supported")
+
+
+    def get_mem_depth(self):
         self.inst.write(':ACQ:MDEP?')
         fullreading = self.inst.read_raw()
         readinglines = fullreading.splitlines()
@@ -377,8 +388,7 @@ class rigol_ds1054z:
             mdepth = int(readinglines[0])
         return mdepth
 
-    def read_raw_wave(self, channel=1, samprange=None, scale='uint8') 
-                -> np.ndarray:
+    def read_raw_wave(self, channel=1, samprange=None, scale='uint8') -> np.ndarray:
         """Read the raw waveform
 
         Scale can be:
