@@ -5,6 +5,8 @@ Python Class for controlling the Rigol DS1054z Oscilloscope
 
 There is no license for this work... it is use at your own risk (I assume no liability).
 
+Based on [https://github.com/charkster/rigol_ds1054z]
+
 This python class uses visa, which means that you will need to install: pyusb, pyvisa and pyvisa-py
 
 See this article on setting these up and testing:
